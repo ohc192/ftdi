@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/ziutek/ftdi"
+	"github.com/ohc192/ftdi"
 	"log"
 	"time"
 )
@@ -13,7 +13,7 @@ func checkErr(err error) {
 }
 
 const (
-	baudrate  = 192
+	baudrate  = 300 
 	Bps       = baudrate * 32 // for FT323R
 	chunkSize = 2 * 64
 	bufLen    = 2 * 62 // 62 because of 2 status bytes in every 64B USB packet
@@ -51,7 +51,7 @@ func twoBits(b []byte) byte {
 }
 
 func main() {
-	d, err := ftdi.OpenFirst(0x0403, 0x6001, ftdi.ChannelAny)
+	d, err := ftdi.OpenFirst(0x0403, 0x6014, ftdi.ChannelAny)
 	checkErr(err)
 	defer d.Close()
 
@@ -67,11 +67,12 @@ func main() {
 
 	checkErr(d.SetReadChunkSize(chunkSize))
 
-	checkErr(d.WriteByte(0))
+	checkErr(d.WriteByte(0x7E))
 
 	buf := make([]byte, bufLen)
 	pulseLen := 0
 	for {
+		checkErr(d.WriteByte(0x7E))
 		n, err := d.Read(buf)
 		checkErr(err)
 		data := buf

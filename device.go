@@ -78,6 +78,9 @@ func getStringDescriptor(dh *C.libusb_device_handle, id C.uint8_t, langid C.uint
 	if l > e {
 		return "", errors.New("USB string descriptor is too short")
 	}
+	if l==-1 {
+		return "", errors.New("length of descriptor returned as -1")
+	}
 	b := buf[2:l]
 	uni16 := make([]uint16, len(b)/2)
 	for i := range uni16 {
@@ -104,14 +107,19 @@ func (u *USBDev) getStrings(dev *C.libusb_device, ds *C.struct_libusb_device_des
 	}
 	u.Manufacturer, err = getStringDescriptor(dh, ds.iManufacturer, langid)
 	if err != nil {
-		return err
+		//return err
+		u.Manufacturer="UNKNOWN MANUFACTURER"
 	}
 	u.Description, err = getStringDescriptor(dh, ds.iProduct, langid)
 	if err != nil {
-		return err
+		//return err
+		u.Description="UNKNOWN DESCRIPTION"
 	}
 	u.Serial, err = getStringDescriptor(dh, ds.iSerialNumber, langid)
-	return err
+	if err != nil {
+		u.Serial = "UNKNOWN SERIAL NUMBER"
+	}
+	return nil
 }
 
 /*func FindAll(vendor, product int) ([]*USBDev, error) {
@@ -390,7 +398,12 @@ func (d *Device) PurgeWriteBuffer() error {
 func (d *Device) PurgeReadBuffer() error {
 	return d.makeError(C.ftdi_usb_purge_tx_buffer(d.ctx))
 }
-
+func (d *Device) SetReadTimeout(timeout int) {
+	d.ctx.usb_read_timeout=C.int(timeout)
+}
+func (d *Device) SetWriteTimeout(timeout int) {
+	d.ctx.usb_write_timeout=C.int(timeout)
+}
 // PurgeBuffers clears both (Tx and Rx) buffers.
 func (d *Device) PurgeBuffers() error {
 	return d.makeError(C.ftdi_usb_purge_buffers(d.ctx))
@@ -448,7 +461,17 @@ func (d *Device) Read(data []byte) (int, error) {
 	}
 	return int(n), nil
 }
-
+func (d *Device) ReadPointer(readPointer unsafe.Pointer,readAmount int) (int, error) {
+	n := C.ftdi_read_data(
+		d.ctx,
+		(*C.uchar)(readPointer),
+		C.int(readAmount),
+	)
+	if n < 0 {
+		return 0, d.makeError(n)
+	}
+	return int(n), nil
+}
 // Write writes data from buf to device. It retruns number of bytes written.
 func (d *Device) Write(data []byte) (int, error) {
 	n := C.ftdi_write_data(
@@ -460,6 +483,30 @@ func (d *Device) Write(data []byte) (int, error) {
 		return 0, d.makeError(n)
 	}
 	return int(n), nil
+}
+// Write writes data from buf to device. It retruns number of bytes written.
+func (d *Device) WritePointer(writePointer unsafe.Pointer,writeAmount int) (int, error) {
+	n := C.ftdi_write_data(
+		d.ctx,
+		(*C.uchar)(writePointer),
+		C.int(writeAmount),
+	)
+	if n < 0 {
+		return 0, d.makeError(n)
+	}
+	return int(n), nil
+}
+func (d *Device) WriteAndRead(writeDataPointer unsafe.Pointer, readDataPointer unsafe.Pointer, writeCount int, readCount int) (int, error, int, error) {
+	nW := C.ftdi_write_data(d.ctx, (*C.uchar)(writeDataPointer),C.int(writeCount))
+	if nW < 0 {
+		return 0, d.makeError(nW),0,nil
+	}
+
+	nR := C.ftdi_read_data(d.ctx, (*C.uchar)(readDataPointer), C.int(readCount) )
+	if nR < 0 {
+		return 0, nil,0,d.makeError(nR)
+	}
+	return int(nW), nil, int(nR),nil
 }
 
 // Write writes bytes from string s to device. It retruns number of bytes written.
